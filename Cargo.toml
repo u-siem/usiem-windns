@@ -1,12 +1,12 @@
 [package]
 name = "u-siem-windns"
-version = "0.0.1"
+version = "0.0.2"
 authors = ["Samuel Garcés <samuel.garces@protonmail.com>"]
 license = "MIT"
 description = "Windows Server DNS parser for uSIEM"
 repository = "https://github.com/u-siem/u-siem-core"
 keywords = ["SIEM", "security", "logs","windows","dns"]
-categories = ["security"]
+categories = ["parsing"]
 edition = "2018"
 
 [lib]

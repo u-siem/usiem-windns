@@ -43,7 +43,7 @@ pub fn parse_log(log: SiemLog) -> Result<SiemLog, SiemLog> {
     log.set_service(Cow::Borrowed("DNS"));
 
     let source_ip = match part1_fields.get(8) {
-        Some(ip) => match SiemIp::from_ip_str(ip.to_string()) {
+        Some(ip) => match SiemIp::from_ip_str(*ip) {
             Ok(ip) => ip,
             Err(_) => return Err(log),
         },
@@ -182,13 +182,13 @@ mod filterlog_tests {
                 assert_eq!(
                     log.field("source.ip"),
                     Some(&SiemField::IP(
-                        SiemIp::from_ip_str(Cow::Borrowed("10.161.60.71")).unwrap()
+                        SiemIp::from_ip_str("10.161.60.71").unwrap()
                     ))
                 );
                 assert_eq!(
                     log.field("destination.ip"),
                     Some(&SiemField::IP(
-                        SiemIp::from_ip_str(Cow::Borrowed("0.0.0.0")).unwrap()
+                        SiemIp::from_ip_str("0.0.0.0").unwrap()
                     ))
                 );
                 assert_eq!(
