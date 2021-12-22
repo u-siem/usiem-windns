@@ -1,4 +1,5 @@
-# usiem-windns
+![Rust](https://github.com/u-siem/usiem-windns/workflows/Rust/badge.svg)
+# uSIEM Windows DNS Server
 Windows Server DNS parser for uSIEM
 
 ### Format
