@@ -1,4 +1,4 @@
-use chrono::prelude::{TimeZone, Utc};
+use usiem::chrono::prelude::{TimeZone, Utc};
 use std::borrow::Cow;
 use usiem::components::common::LogParsingError;
 use usiem::events::dns::{DnsEvent, DnsEventType, DnsRecordType};
