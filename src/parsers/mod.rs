@@ -32,7 +32,7 @@ pub fn parse_log(log: SiemLog) -> Result<SiemLog, LogParsingError> {
     let mut log = SiemLog::new(
         log.message().to_string(),
         log.event_received(),
-        log.origin().clone(),
+        log.origin().to_string(),
     );
     log.set_event_created(event_created);
     log.set_vendor(Cow::Borrowed("Microsoft"));
@@ -43,22 +43,22 @@ pub fn parse_log(log: SiemLog) -> Result<SiemLog, LogParsingError> {
     let ip_host_log = match part1_fields.get(5) {
         Some(ip) => match SiemIp::from_ip_str(*ip) {
             Ok(ip) => ip,
-            Err(_) => return Err(LogParsingError::ParserError(log)),
+            Err(_) => return Err(LogParsingError::ParserError(log, String::from("Invalid HostIP"))),
         },
-        None => return Err(LogParsingError::ParserError(log)),
+        None => return Err(LogParsingError::ParserError(log,String::from("No HostIP found"))),
     };
-    let ip_server = log.origin().clone();
+    let ip_server = log.origin().to_string();
     let send_recv = match part1_fields.get(4) {
         Some(operation) => match operation {
             &"Snd" => "Snd",
             &"Rcv" => "Rcv",
-            _ => return Err(LogParsingError::ParserError(log)),
+            _ => return Err(LogParsingError::ParserError(log, String::from("No valid Snd/Rcv found"))),
         },
-        None => return Err(LogParsingError::ParserError(log)),
+        None => return Err(LogParsingError::ParserError(log, String::from("No Snd/Rcv found"))),
     };
     let transaction_id = match part1_fields.get(6) {
         Some(transaction) => *transaction,
-        None => return Err(LogParsingError::ParserError(log)),
+        None => return Err(LogParsingError::ParserError(log, String::from("No transaction_id found"))),
     };
     log.add_field("transaction.id", SiemField::from_str(transaction_id.to_string()));
     let (q_r, _op)= match part1_fields.get(7) {
@@ -67,7 +67,7 @@ pub fn parse_log(log: SiemLog) -> Result<SiemLog, LogParsingError> {
                 // Response
                 let op = match part1_fields.get(8){
                     Some(op) => op,
-                    None => return Err(LogParsingError::ParserError(log))
+                    None => return Err(LogParsingError::ParserError(log, String::from("No valid query/response found")))
                 };
                 ("R", *op)
             }else{
@@ -75,7 +75,11 @@ pub fn parse_log(log: SiemLog) -> Result<SiemLog, LogParsingError> {
                 ("Q",*q_r)
             }
         }
-        None => return Err(LogParsingError::ParserError(log)),
+        None => return Err(LogParsingError::ParserError(log, String::from("No query/response found"))),
+    };
+    let ip_server = match SiemIp::from_ip_str(&ip_server) {
+        Ok(ip_server) => ip_server,
+        Err(_)=> return Err(LogParsingError::FormatError(log, String::from("No valid IpServer")))
     };
     let (op_code, source_ip, destination_ip) = if send_recv == "Rcv" && q_r == "Q" {
         // Server receives a query from a host
@@ -95,7 +99,7 @@ pub fn parse_log(log: SiemLog) -> Result<SiemLog, LogParsingError> {
 
     let record_name = match part2_fields.get(1) {
         Some(rcr) => parse_record_name(rcr),
-        None => return Err(LogParsingError::ParserError(log)),
+        None => return Err(LogParsingError::ParserError(log, String::from("Record name not found"))),
     };
     let record_type = match part2_fields.get(0) {
         Some(rcr) => match rcr {
@@ -109,9 +113,9 @@ pub fn parse_log(log: SiemLog) -> Result<SiemLog, LogParsingError> {
             &"SOA" => DnsRecordType::SOA,
             &"SRV" => DnsRecordType::SRV,
             &"TXT" => DnsRecordType::TXT,
-            _ => return Err(LogParsingError::ParserError(log)),
+            _ => return Err(LogParsingError::ParserError(log, String::from("Invalid record type"))),
         },
-        None => return Err(LogParsingError::ParserError(log)),
+        None => return Err(LogParsingError::ParserError(log, String::from("Record type not found"))),
     };
 
     let dns_event = DnsEvent {
@@ -238,7 +242,7 @@ mod filterlog_tests {
     #[test]
     fn test_parse_dns() {
         let log = "6/5/2013 10:00:32 AM 0E70 PACKET  00000000033397A0 UDP Rcv 10.161.60.71    5b47   Q [0001   D   NOERROR] A      (12)somecomputer(6)domain(3)com(0)";
-        let log = SiemLog::new(log.to_string(), 0, SiemIp::V4(0));
+        let log = SiemLog::new(log.to_string(), 0, "10.0.0.5");
         let log = parse_log(log).expect("Must parse log");
         assert_eq!(log.service(), "DNS");
         assert_eq!(
@@ -247,7 +251,7 @@ mod filterlog_tests {
         );
         assert_eq!(
             log.field("destination.ip"),
-            Some(&SiemField::IP(SiemIp::from_ip_str("0.0.0.0").unwrap()))
+            Some(&SiemField::IP(SiemIp::from_ip_str("10.0.0.5").unwrap()))
         );
         assert_eq!(
             log.field("dns.question.name"),
@@ -261,7 +265,7 @@ mod filterlog_tests {
     fn test_parse_dns_question_to_server() {
         // ["0E1C", "PACKET", "0000017DEDFE28D0", "UDP", "Rcv", "10.20.0.6", "966f", "Q", ""]
         let log = "22/12/2021 21:46:04 0E1C PACKET  0000017DEDFE28D0 UDP Rcv 10.20.0.6       966f   Q [0001   D   NOERROR] A      (5)login(4)live(3)com(0)";
-        let log = SiemLog::new(log.to_string(), 0, SiemIp::V4(0));
+        let log = SiemLog::new(log.to_string(), 0, "10.0.0.1");
         let log = parse_log(log).expect("Must parse the log");
         assert_eq!(log.service(), "DNS");
         assert_eq!(
@@ -270,7 +274,7 @@ mod filterlog_tests {
         );
         assert_eq!(
             log.field("destination.ip"),
-            Some(&SiemField::IP(SiemIp::from_ip_str("0.0.0.0").unwrap()))
+            Some(&SiemField::IP(SiemIp::from_ip_str("10.0.0.1").unwrap()))
         );
         assert_eq!(
             log.field("dns.question.name"),
@@ -282,12 +286,12 @@ mod filterlog_tests {
     fn test_parse_dns_question_to_external_server() {
         // ["0E1C", "PACKET", "0000017DEDFE28D0", "UDP", "Rcv", "10.20.0.6", "966f", "Q", ""]
         let log = "22/12/2021 21:46:04 0E1C PACKET  0000017DEDE1F920 UDP Snd 8.8.4.4         624d   Q [0001   D   NOERROR] A      (5)login(4)live(3)com(0)";
-        let log = SiemLog::new(log.to_string(), 0, SiemIp::V4(3));
+        let log = SiemLog::new(log.to_string(), 0, "10.0.0.3");
         let log = parse_log(log).expect("Must parse the log");
         assert_eq!(log.service(), "DNS");
         assert_eq!(
             log.field("source.ip"),
-            Some(&SiemField::IP(SiemIp::V4(3)))
+            Some(&SiemField::IP(SiemIp::from_ip_str("10.0.0.3").unwrap()))
         );
         assert_eq!(
             log.field("destination.ip"),
@@ -303,12 +307,12 @@ mod filterlog_tests {
     fn test_parse_dns_answer_from_server() {
         // ["0E1C", "PACKET", "0000017DEDFE28D0", "UDP", "Snd", "10.20.0.6", "966f", "R", "Q", ""]
         let log = "22/12/2021 21:46:04 0E1C PACKET  0000017DEDFE28D0 UDP Snd 10.20.0.6       966f R Q [8081   DR  NOERROR] A      (5)login(4)live(3)com(0)";
-        let log = SiemLog::new(log.to_string(), 0, SiemIp::V4(2));
+        let log = SiemLog::new(log.to_string(), 0, "10.0.0.2");
         let log = parse_log(log).expect("Must parse the log");
         assert_eq!(log.service(), "DNS");
         assert_eq!(
             log.field("source.ip"),
-            Some(&SiemField::IP(SiemIp::V4(2)))
+            Some(&SiemField::IP(SiemIp::from_ip_str("10.0.0.2").unwrap()))
         );
         assert_eq!(
             log.field("destination.ip"),
@@ -320,7 +324,7 @@ mod filterlog_tests {
         );
         match log.event() {
             SiemEvent::DNS(event) => {
-                assert_eq!(event.source_ip, SiemIp::V4(2));
+                assert_eq!(event.source_ip, SiemIp::from_ip_str("10.0.0.2").unwrap());
                 assert_eq!(event.destination_ip, SiemIp::from_ip_str("10.20.0.6").unwrap());
                 assert_eq!(event.op_code, DnsEventType::ANSWER);
             },
@@ -332,7 +336,7 @@ mod filterlog_tests {
     fn test_parse_dns_answer_from_external_server() {
         // ["0E1C", "PACKET", "0000017DEDFE28D0", "UDP", "Snd", "10.20.0.6", "966f", "R", "Q", ""]
         let log = "22/12/2021 21:46:04 0E1C PACKET  0000017DECC585B0 UDP Rcv 8.8.4.4         624d R Q [8081   DR  NOERROR] A      (5)login(4)live(3)com(0)";
-        let log = SiemLog::new(log.to_string(), 0, SiemIp::V4(8));
+        let log = SiemLog::new(log.to_string(), 0, "10.0.0.8");
         let log = parse_log(log).expect("Must parse the log");
         assert_eq!(log.service(), "DNS");
         assert_eq!(
@@ -341,7 +345,7 @@ mod filterlog_tests {
         );
         assert_eq!(
             log.field("destination.ip"),
-            Some(&SiemField::IP(SiemIp::V4(8)))
+            Some(&SiemField::IP(SiemIp::from_ip_str("10.0.0.8").unwrap()))
         );
         
         assert_eq!(
@@ -351,7 +355,7 @@ mod filterlog_tests {
         match log.event() {
             SiemEvent::DNS(event) => {
                 assert_eq!(event.source_ip, SiemIp::from_ip_str("8.8.4.4").unwrap());
-                assert_eq!(event.destination_ip, SiemIp::V4(8));
+                assert_eq!(event.destination_ip, SiemIp::from_ip_str("10.0.0.8").unwrap());
                 assert_eq!(event.op_code, DnsEventType::ANSWER);
             },
             _ => panic!("No valid event type")

@@ -1,6 +1,6 @@
 [package]
 name = "u-siem-windns"
-version = "0.0.4"
+version = "0.0.5"
 authors = ["Samuel Garcés <samuel.garces@protonmail.com>"]
 license = "MIT"
 description = "Windows Server DNS parser for uSIEM"
